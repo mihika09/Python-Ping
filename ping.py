@@ -10,10 +10,10 @@ timer = time.time
 ICMP_ECHO = 8
 ICMP_ECHOREPLY = 0
 CODE = 0
+MIN_SLEEP = 1000.00
 
 
 def calculate_checksum(packet):
-
 	countTo = (len(packet) // 2) * 2
 
 	count = 0
@@ -74,26 +74,47 @@ class Ping:
 		self.seq_no = 0
 		try:
 			self.destination_ip = to_ip(self.destination_server)
-
 		except socket.gaierror as e:
 			self.print_unknown_host(e)
 			sys.exit()
 
-	def print_start(self):
+		self.sent_packets = 0
+		self.received_packets = 0
 
-		print("PYTHON-PING {} ({}): {} data bytes".format(self.destination_server, self.destination_ip, self.packet_size))
+	def print_start(self):
+		print(
+			"PYTHON-PING {} ({}): {} data bytes".format(self.destination_server, self.destination_ip, self.packet_size))
+
+	def print_unknown_host(self):
+		print("python-ping: cannot resolve {}: Unknown host".format(self.destination_server))
+
+	def print_timeout(self):
+		print("Request timeout for icmp_seq {}".format(self.seq_no))
+
+	def print_success(self, data_len, from_address, ttl, delay):
+		print("{} bytes from {}: icmp_seq={} ttl={} time={}ms".format(data_len, from_address, self.seq_no, ttl, delay))
+
+	def print_exit(self):
+		print("--- {} ping statistics ---".format(self.destination_server))
+
+	@staticmethod
+	def header_to_dict(keys, header, struct_format):
+		values = struct.unpack(struct_format, header)
+		return dict(zip(keys, values))
 
 	def start_ping(self):
 
 		try:
 			while self.count_of_packets > 0:
-				self.create_socket()
+				self.pinger()
 				self.count_of_packets -= 1
 
 		except KeyboardInterrupt:  # handle Ctrl+C
-			print("exit")
+			print()
 
-	def create_socket(self):
+		self.print_exit()
+
+	def pinger(self):
 
 		try:
 			icmp_socket = socket.socket(socket.AF_INET, socket.SOCK_RAW, socket.getprotobyname("ICMP"))
@@ -106,18 +127,25 @@ class Ping:
 
 			sys.exit()
 
-		self.print_start()
+		if self.seq_no == 0:
+			self.print_start()
 		time_values = self.send_icmp_request(icmp_socket)
 
 		if time_values is None:
 			return
 
 		send_time, start_of_wait = map(float, time_values)
-		receive_time = self.receive_icmp_reply(icmp_socket)
+
+		receive_time, ttl, data_len, from_address = self.receive_icmp_reply(icmp_socket)
+
+		icmp_socket.close()
 
 		delay = (receive_time - send_time) * 1000.00
-		print("Packet {}; Delay: {}".format(self.seq_no, delay))
+		self.print_success(data_len, from_address, ttl, delay)
 		self.seq_no += 1
+
+		if MIN_SLEEP > delay:
+			time.sleep((MIN_SLEEP-delay)/1000.00)
 
 	def send_icmp_request(self, icmp_socket):
 
@@ -144,13 +172,13 @@ class Ping:
 		except socket.error as err:
 			print("General error: %s", err)
 			icmp_socket.close()
-			return None
+			return
 
 		return send_time, start_of_wait
 
 	def receive_icmp_reply(self, icmp_socket):
 
-		timeout = self.timeout_in_ms/1000  # converting timeout to s
+		timeout = self.timeout_in_ms / 1000  # converting timeout to s
 
 		while True:
 
@@ -158,12 +186,25 @@ class Ping:
 			receive_time = timer()
 
 			if not inputready:  # timeout
-				print("Request timed out")
-				sys.exit(-1)
+				self.print_timeout()
+				return
 
 			packet_data, address = icmp_socket.recvfrom(2048)
 
-			return receive_time
+			icmp_keys = ['type', 'code', 'checksum', 'identifier', 'sequence number']
+			icmp_header = self.header_to_dict(icmp_keys, packet_data[20:28], "!BBHHH")
+
+			# print("ICMP header: ", icmp_header)
+			if icmp_header['identifier'] == self.identifier and icmp_header['sequence number'] == self.seq_no:
+
+				ip_keys = ['VersionIHL', 'Type_of_Service', 'Total_Length', 'Identification', 'Flags_FragOffset', 'TTL', 'Protocol',
+						   'Header_Checksum']
+				ip_header = self.header_to_dict(ip_keys, packet_data[:20], "!BBHHHBBHII")
+
+				# print("\n\n\nIP header: ", ip_header)
+
+				data_len = len(packet_data) - 28
+				return receive_time, ip_header['TTL'], data_len, address[0]
 
 
 def ping(destination_server, timeout=1000, count=4, packet_size=55):
@@ -171,4 +212,4 @@ def ping(destination_server, timeout=1000, count=4, packet_size=55):
 	p.start_ping()
 
 
-ping("google.com", packet_size=100)
+ping("google.com")
