@@ -70,8 +70,11 @@ class Ping:
 		self.count_of_packets = count_of_packets
 		self.timeout_in_ms = timeout_in_ms
 		self.packet_size = packet_size
+		if self.packet_size > 65507:
+			print("ping: packet size too large: {} > 65507".format(self.packet_size))
+			sys.exit()
 		self.identifier = os.getpid() & 0xffff
-		self.seq_no = 0
+		self.seq_no = -1
 		try:
 			self.destination_ip = to_ip(self.destination_server)
 		except socket.gaierror as e:
@@ -80,6 +83,9 @@ class Ping:
 
 		self.sent_packets = 0
 		self.received_packets = 0
+		self.min_delay = 999999999.0
+		self.max_delay = 0.0
+		self.total_delay = 0.0
 
 	def print_start(self):
 		print(
@@ -92,10 +98,22 @@ class Ping:
 		print("Request timeout for icmp_seq {}".format(self.seq_no))
 
 	def print_success(self, data_len, from_address, ttl, delay):
-		print("{} bytes from {}: icmp_seq={} ttl={} time={}ms".format(data_len, from_address, self.seq_no, ttl, delay))
+		print("{} bytes from {}: icmp_seq={} ttl={} time={:.3f} ms".format(data_len, from_address, self.seq_no, ttl, delay))
 
 	def print_exit(self):
 		print("--- {} ping statistics ---".format(self.destination_server))
+
+		if self.sent_packets != 0:
+			packet_loss = ((self.sent_packets - self.received_packets) * 100) / self.sent_packets
+			print("{} packets transmitted, {} packets received, {:.1f}% packet loss".format(self.sent_packets, self.
+																					   received_packets, packet_loss))
+
+			avg = self.total_delay/self.sent_packets
+			if self.received_packets > 0:
+				print("round-trip min/avg/max = {:.3f}/{:.3f}/{:.3f} ms".format(self.min_delay, avg, self.max_delay))
+
+		else:
+			print("{} packets transmitted, {} packets received".format(self.sent_packets, self.received_packets))
 
 	@staticmethod
 	def header_to_dict(keys, header, struct_format):
@@ -127,25 +145,37 @@ class Ping:
 
 			sys.exit()
 
-		if self.seq_no == 0:
+		if self.seq_no == -1:
 			self.print_start()
+
+		self.seq_no += 1
 		time_values = self.send_icmp_request(icmp_socket)
 
 		if time_values is None:
+			time.sleep(MIN_SLEEP / 1000.00)
 			return
 
 		send_time, start_of_wait = map(float, time_values)
+		self.sent_packets += 1
 
 		receive_time, ttl, data_len, from_address = self.receive_icmp_reply(icmp_socket)
-
 		icmp_socket.close()
 
-		delay = (receive_time - send_time) * 1000.00
-		self.print_success(data_len, from_address, ttl, delay)
-		self.seq_no += 1
+		if receive_time:
+			self.received_packets += 1
+			delay = (receive_time - send_time) * 1000.00
+			if self.min_delay > delay:
+				self.min_delay = delay
 
-		if MIN_SLEEP > delay:
-			time.sleep((MIN_SLEEP-delay)/1000.00)
+			if self.max_delay < delay:
+				self.max_delay = delay
+
+			self.total_delay += delay
+
+			self.print_success(data_len, from_address, ttl, delay)
+
+			if MIN_SLEEP > delay:
+				time.sleep((MIN_SLEEP - delay) / 1000.00)
 
 	def send_icmp_request(self, icmp_socket):
 
@@ -187,22 +217,18 @@ class Ping:
 
 			if not inputready:  # timeout
 				self.print_timeout()
-				return
+				return None, 0, 0, 0
 
 			packet_data, address = icmp_socket.recvfrom(2048)
 
 			icmp_keys = ['type', 'code', 'checksum', 'identifier', 'sequence number']
 			icmp_header = self.header_to_dict(icmp_keys, packet_data[20:28], "!BBHHH")
 
-			# print("ICMP header: ", icmp_header)
 			if icmp_header['identifier'] == self.identifier and icmp_header['sequence number'] == self.seq_no:
 
 				ip_keys = ['VersionIHL', 'Type_of_Service', 'Total_Length', 'Identification', 'Flags_FragOffset', 'TTL', 'Protocol',
 						   'Header_Checksum']
 				ip_header = self.header_to_dict(ip_keys, packet_data[:20], "!BBHHHBBHII")
-
-				# print("\n\n\nIP header: ", ip_header)
-
 				data_len = len(packet_data) - 28
 				return receive_time, ip_header['TTL'], data_len, address[0]
 
@@ -212,4 +238,4 @@ def ping(destination_server, timeout=1000, count=4, packet_size=55):
 	p.start_ping()
 
 
-ping("google.com")
+ping("google.com", count=10)
