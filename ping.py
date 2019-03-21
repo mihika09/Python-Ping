@@ -5,7 +5,10 @@ import sys
 import struct
 import select
 
-timer = time.time
+if sys.platform.startswith('win32'):
+	time = time.clock
+else:
+	timer = time.time
 
 ICMP_ECHO = 8
 ICMP_ECHOREPLY = 0
@@ -238,4 +241,4 @@ def ping(destination_server, timeout=1000, count=4, packet_size=55):
 	p.start_ping()
 
 
-ping("google.com", count=10)
+# ping("google.com", packet_size=100)
