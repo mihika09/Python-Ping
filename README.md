@@ -54,4 +54,4 @@ ping("google.com")
 round-trip min/avg/max = 114.380/115.453/117.290 ms  
 
 #### Optional Arguments:  
-ping("google.com", count=<number of packets tobe sent>, packet_size=<packet_size in bytes>, timeout=<timeout in ms>)  
+ping("google.com", count=number of packets to be sent, packet_size=packet_size in bytes, timeout=timeout in ms)  
