@@ -1,9 +1,12 @@
+#!/usr/bin/env python3
+
 import socket
 import os
 import time
 import sys
 import struct
 import select
+import argparse
 
 if sys.platform.startswith('win32'):
 	time = time.clock
@@ -81,7 +84,7 @@ class Ping:
 		try:
 			self.destination_ip = to_ip(self.destination_server)
 		except socket.gaierror as e:
-			self.print_unknown_host(e)
+			self.print_unknown_host()
 			sys.exit()
 
 		self.sent_packets = 0
@@ -230,15 +233,28 @@ class Ping:
 			if icmp_header['identifier'] == self.identifier and icmp_header['sequence number'] == self.seq_no:
 
 				ip_keys = ['VersionIHL', 'Type_of_Service', 'Total_Length', 'Identification', 'Flags_FragOffset', 'TTL', 'Protocol',
-						   'Header_Checksum']
+						   'Header_Checksum', 'Source_IP', 'Destination_IP']
 				ip_header = self.header_to_dict(ip_keys, packet_data[:20], "!BBHHHBBHII")
 				data_len = len(packet_data) - 28
 				return receive_time, ip_header['TTL'], data_len, address[0]
 
+def create_parser():
+	parser = argparse.ArgumentParser()
+	parser.add_argument('destination_server')
+	parser.add_argument('-c', '--count', required=False, nargs='?', default=4, type=int)
+	parser.add_argument('-t', '--timeout', required=False, nargs='?', default=1000, type=int)
+	parser.add_argument('-p', '--packet_size', required=False, nargs='?', default=1000, type=int)
+	return parser
 
 def ping(destination_server, timeout=1000, count=4, packet_size=55):
 	p = Ping(destination_server, count, timeout, packet_size)
 	p.start_ping()
 
-
-# ping("google.com", packet_size=100)
+if __name__ == '__main__':
+	parser = create_parser()
+	args = parser.parse_args(sys.argv[1:])
+	destination_server = args.destination_server
+	timeout = args.timeout
+	packet_size = args.packet_size
+	count = args.count
+	ping(destination_server, timeout, count, packet_size)
