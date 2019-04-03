@@ -238,17 +238,20 @@ class Ping:
 				data_len = len(packet_data) - 28
 				return receive_time, ip_header['TTL'], data_len, address[0]
 
+
 def create_parser():
 	parser = argparse.ArgumentParser()
 	parser.add_argument('destination_server')
-	parser.add_argument('-c', '--count', required=False, nargs='?', default=4, type=int)
-	parser.add_argument('-t', '--timeout', required=False, nargs='?', default=1000, type=int)
-	parser.add_argument('-p', '--packet_size', required=False, nargs='?', default=1000, type=int)
+	parser.add_argument('-c', '--count', required=False, nargs='?', default=4, type=int, metavar='Count of packets')
+	parser.add_argument('-t', '--timeout', required=False, nargs='?', default=1000, type=int, metavar='Timeout in ms')
+	parser.add_argument('-p', '--packet_size', required=False, nargs='?', default=1000, type=int, metavar='Packet size in bytes')
 	return parser
+
 
 def ping(destination_server, timeout=1000, count=4, packet_size=55):
 	p = Ping(destination_server, count, timeout, packet_size)
 	p.start_ping()
+
 
 if __name__ == '__main__':
 	parser = create_parser()
