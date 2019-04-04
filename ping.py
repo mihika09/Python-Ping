@@ -244,7 +244,7 @@ def create_parser():
 	parser.add_argument('destination_server')
 	parser.add_argument('-c', '--count', required=False, nargs='?', default=4, type=int, metavar='Count of packets')
 	parser.add_argument('-t', '--timeout', required=False, nargs='?', default=1000, type=int, metavar='Timeout in ms')
-	parser.add_argument('-p', '--packet_size', required=False, nargs='?', default=1000, type=int, metavar='Packet size in bytes')
+	parser.add_argument('-p', '--packet_size', required=False, nargs='?', default=55, type=int, metavar='Packet size in bytes')
 	return parser
 
 
